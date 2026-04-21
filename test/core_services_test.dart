@@ -5,6 +5,7 @@ import 'package:apk_build_publish/src/core/models/market_type.dart';
 import 'package:apk_build_publish/src/core/models/project_config.dart';
 import 'package:apk_build_publish/src/core/models/publish_request.dart';
 import 'package:apk_build_publish/src/core/services/apk_publish_service.dart';
+import 'package:apk_build_publish/src/core/services/base_apk_matcher.dart';
 import 'package:apk_build_publish/src/core/services/project_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -73,38 +74,42 @@ void main() {
       expect(result.isSuccess, isTrue);
       expect(result.results, hasLength(2));
     });
+  });
 
-    test('resolves apk from configured directory by package name', () async {
-      final service = ApkPublishService();
-      final tempDir = await Directory.systemTemp.createTemp('apk_publish_dir');
-      final apkFile = File(
-        '${tempDir.path}/release-com.example.directory-demo.apk',
-      );
-      await apkFile.writeAsString('fake');
+  group('BaseApkMatcher', () {
+    test('matches base.apk files by decoded package name', () async {
+      final tempDir = await Directory.systemTemp.createTemp('apk_matcher_dir');
+      final matchedDir = Directory('${tempDir.path}/com.example.directory');
+      final unmatchedDir = Directory('${tempDir.path}/com.example.other');
+      await matchedDir.create(recursive: true);
+      await unmatchedDir.create(recursive: true);
 
-      final project =
-          ProjectConfig.create(
-            name: 'directory-demo',
-            packageName: 'com.example.directory',
-            basePackagePath: tempDir.path,
-            outputDirectory: '/tmp/output',
-          ).copyWith(
-            channels: {
-              ...ProjectConfig.defaultChannels(),
-              MarketType.huawei: const MarketChannelConfig(
-                market: MarketType.huawei,
-                enabled: true,
-              ),
-            },
-          );
+      final matchedBaseApk = File('${matchedDir.path}/base.apk');
+      final unmatchedBaseApk = File('${unmatchedDir.path}/base.apk');
+      final ignoredApk = File('${matchedDir.path}/feature.apk');
+      await matchedBaseApk.writeAsString('matched');
+      await unmatchedBaseApk.writeAsString('other');
+      await ignoredApk.writeAsString('ignored');
 
-      final result = await service.publishProject(
-        project: project,
-        request: const PublishRequest(dryRun: true),
+      final project = ProjectConfig.create(
+        name: 'directory-demo',
+        packageName: 'com.example.directory',
+        basePackagePath: tempDir.path,
+        outputDirectory: '/tmp/output',
       );
 
-      expect(result.apkPath, apkFile.path);
-      expect(result.isSuccess, isTrue);
+      final result = await BaseApkMatcher.lookup(
+        project,
+        packageReader: (apkFile) async {
+          if (apkFile.path == matchedBaseApk.path) {
+            return 'com.example.directory';
+          }
+          return 'com.example.other';
+        },
+      );
+
+      expect(result.found, isTrue);
+      expect(result.matchedFile?.path, matchedBaseApk.path);
     });
   });
 }

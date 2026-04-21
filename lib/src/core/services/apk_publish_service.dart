@@ -5,6 +5,7 @@ import '../models/market_type.dart';
 import '../models/project_config.dart';
 import '../models/publish_request.dart';
 import '../models/publish_result.dart';
+import 'base_apk_matcher.dart';
 import 'marketplace_registry.dart';
 
 class ApkPublishService {
@@ -81,54 +82,16 @@ class ApkPublishService {
     ProjectConfig project,
     PublishRequest request,
   ) async {
-    final explicitPath = request.apkPath?.trim();
-    if (explicitPath != null && explicitPath.isNotEmpty) {
-      return File(explicitPath);
-    }
-
-    final configuredPath = project.basePackagePath.trim();
-    if (configuredPath.isEmpty) {
-      return File(configuredPath);
-    }
-
-    final file = File(configuredPath);
-    if (await file.exists()) {
-      return file;
-    }
-
-    final directory = Directory(configuredPath);
-    if (!await directory.exists()) {
-      return file;
-    }
-
-    final apkFiles = await directory
-        .list(recursive: true, followLinks: false)
-        .where(
-          (entity) =>
-              entity is File && entity.path.toLowerCase().endsWith('.apk'),
-        )
-        .cast<File>()
-        .toList();
-
-    if (apkFiles.isEmpty) {
-      return File(configuredPath);
-    }
-
-    final packageName = project.packageName.trim().toLowerCase();
-    final matchedFiles = packageName.isEmpty
-        ? apkFiles
-        : apkFiles.where((candidate) {
-            final fileName = candidate.uri.pathSegments.isEmpty
-                ? candidate.path.toLowerCase()
-                : candidate.uri.pathSegments.last.toLowerCase();
-            return fileName.contains(packageName);
-          }).toList();
-
-    final candidates = matchedFiles.isNotEmpty ? matchedFiles : apkFiles;
-    candidates.sort(
-      (left, right) =>
-          right.statSync().modified.compareTo(left.statSync().modified),
+    final matchedFile = await BaseApkMatcher.findBestMatch(
+      project,
+      explicitPath: request.apkPath,
     );
-    return candidates.first;
+    if (matchedFile != null) {
+      return matchedFile;
+    }
+
+    final fallbackPath =
+        request.apkPath?.trim() ?? project.basePackagePath.trim();
+    return File(fallbackPath);
   }
 }

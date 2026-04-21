@@ -5,7 +5,9 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../core/models/project_config.dart';
+import '../core/services/base_apk_matcher.dart';
 import '../core/services/project_store.dart';
+import '../core/widgets/middle_ellipsis_text.dart';
 import 'project_form_page.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -23,7 +25,9 @@ class _DashboardPageState extends State<DashboardPage> {
   final List<String> _logs = <String>[];
 
   bool _loading = true;
+  bool _queryingBasePackage = false;
   String? _selectedProjectId;
+  BaseApkLookupResult? _baseApkLookupResult;
 
   ProjectConfig? get _selectedProject {
     if (_projects.isEmpty) {
@@ -72,6 +76,9 @@ class _DashboardPageState extends State<DashboardPage> {
         ..clear()
         ..addAll(projects);
       _selectedProjectId = selectedId;
+      if (_selectedProjectId != selectedId) {
+        _baseApkLookupResult = null;
+      }
       _loading = false;
     });
   }
@@ -218,10 +225,79 @@ class _DashboardPageState extends State<DashboardPage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _generateChannelPackage(ProjectConfig project, String marketName) {
+    final message =
+        '已触发 $marketName 的渠道包生成，基础包规则: ${project.packageName.ifEmpty('未设置包名')} + *base.apk';
+    setState(() {
+      _logs.insert(0, message);
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _queryBasePackage(ProjectConfig project) async {
+    setState(() {
+      _queryingBasePackage = true;
+      _baseApkLookupResult = null;
+    });
+
+    try {
+      final result = await BaseApkMatcher.lookup(project);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _queryingBasePackage = false;
+        _baseApkLookupResult = result;
+        _logs.insert(
+          0,
+          result.found
+              ? '基础包匹配成功: ${result.message}'
+              : '基础包匹配失败: ${result.message}',
+        );
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _queryingBasePackage = false;
+        _baseApkLookupResult = BaseApkLookupResult(
+          matchedFile: null,
+          message: '查询失败: $error',
+          searchedDirectory: project.basePackagePath,
+        );
+        _logs.insert(0, '基础包查询失败: $error');
+      });
+    }
+  }
+
+  void _startUpload(ProjectConfig project, String marketName) {
+    final message =
+        '已触发 $marketName 的开始上传，基础包规则: ${project.packageName.ifEmpty('未设置包名')} + *base.apk';
+    setState(() {
+      _logs.insert(0, message);
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final selectedProject = _selectedProject;
+    final basePackageText = _queryingBasePackage
+        ? '查询中...'
+        : _baseApkLookupResult?.message ??
+              selectedProject?.basePackagePath.ifEmpty('未配置基础包目录') ??
+              '未配置基础包目录';
+    final basePackageColor = _queryingBasePackage
+        ? theme.colorScheme.primary
+        : (_baseApkLookupResult == null || _baseApkLookupResult!.found)
+        ? theme.colorScheme.onSurfaceVariant
+        : theme.colorScheme.error;
 
     return Scaffold(
       body: DecoratedBox(
@@ -311,26 +387,68 @@ class _DashboardPageState extends State<DashboardPage> {
                             : Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
-                                  Text(
-                                    '已启用渠道',
-                                    style: theme.textTheme.titleLarge?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                  Row(
+                                    children: <Widget>[
+                                      Text(
+                                        '渠道包',
+                                        style: theme.textTheme.titleLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Spacer(),
+                                      const SizedBox(width: 12),
+                                      FilledButton.tonalIcon(
+                                        onPressed: _queryingBasePackage
+                                            ? null
+                                            : () => _queryBasePackage(
+                                                selectedProject,
+                                              ),
+                                        icon: _queryingBasePackage
+                                            ? const SizedBox(
+                                                width: 14,
+                                                height: 14,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              )
+                                            : const Icon(Icons.search),
+                                        label: const Text('检查基础包'),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      FilledButton.tonal(
+                                        onPressed: () {
+                                          //生成所有渠道包
+                                        },
+                                        child: const Text('全部渠道包生成'),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      FilledButton(
+                                        onPressed: () {
+                                          //上传所有渠道
+                                        },
+                                        child: const Text('全部开始上传'),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Text('基础包：'),
+                                      MiddleEllipsisText(
+                                        basePackageText,
+                                        startLength: 0,
+                                        endLength: 120,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(color: basePackageColor),
+                                      ),
+                                    ],
                                   ),
                                   const SizedBox(height: 12),
                                   if (selectedProject.enabledMarkets.isEmpty)
-                                    Container(
-                                      padding: const EdgeInsets.all(18),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFFFCF7),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color:
-                                              theme.colorScheme.outlineVariant,
-                                        ),
-                                      ),
-                                      child: const Text('当前项目还没有启用任何渠道。'),
-                                    )
+                                    const Text('当前项目还没有启用任何渠道。')
                                   else
                                     ...selectedProject.enabledMarkets.map(
                                       (market) => Padding(
@@ -339,6 +457,15 @@ class _DashboardPageState extends State<DashboardPage> {
                                         ),
                                         child: _ChannelStatusTile(
                                           marketName: market.displayName,
+                                          onGenerate: () =>
+                                              _generateChannelPackage(
+                                                selectedProject,
+                                                market.displayName,
+                                              ),
+                                          onUpload: () => _startUpload(
+                                            selectedProject,
+                                            market.displayName,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -469,9 +596,15 @@ class _ProjectListTile extends StatelessWidget {
 }
 
 class _ChannelStatusTile extends StatelessWidget {
-  const _ChannelStatusTile({required this.marketName});
+  const _ChannelStatusTile({
+    required this.marketName,
+    required this.onGenerate,
+    required this.onUpload,
+  });
 
   final String marketName;
+  final VoidCallback onGenerate;
+  final VoidCallback onUpload;
 
   @override
   Widget build(BuildContext context) {
@@ -484,32 +617,48 @@ class _ChannelStatusTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Expanded(
-            child: Text(
-              marketName,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  marketName,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              FilledButton.tonal(
+                onPressed: onGenerate,
+                child: const Text('渠道包生成'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(onPressed: onUpload, child: const Text('开始上传')),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _StatusBlock(
-              label: '渠道包生成状态',
-              value: '待开始',
-              color: const Color(0xFF9A6700),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _StatusBlock(
-              label: '上传状态',
-              value: '待开始',
-              color: const Color(0xFF005B99),
-            ),
+          const SizedBox(height: 14),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _StatusBlock(
+                  label: '渠道包生成状态',
+                  value: '待开始',
+                  color: const Color(0xFF9A6700),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatusBlock(
+                  label: '上传状态',
+                  value: '待开始',
+                  color: const Color(0xFF005B99),
+                ),
+              ),
+            ],
           ),
         ],
       ),

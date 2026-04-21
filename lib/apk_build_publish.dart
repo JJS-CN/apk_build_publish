@@ -5,6 +5,8 @@ export 'src/core/models/publish_request.dart';
 export 'src/core/models/publish_result.dart';
 export 'src/core/models/signing_config.dart';
 export 'src/core/services/apk_publish_service.dart';
+export 'src/core/services/base_apk_matcher.dart';
 export 'src/core/services/cli_runner.dart';
 export 'src/core/services/marketplace_registry.dart';
 export 'src/core/services/project_store.dart';
+export 'src/core/services/tool_bundle.dart';
