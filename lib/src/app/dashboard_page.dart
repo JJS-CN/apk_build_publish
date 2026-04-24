@@ -7,7 +7,10 @@ import 'package:flutter/material.dart';
 
 import '../core/models/market_type.dart';
 import '../core/models/project_config.dart';
+import '../core/models/publish_request.dart';
+import '../core/services/apk_publish_service.dart';
 import '../core/services/base_apk_matcher.dart';
+import '../core/services/market_channel_schema.dart';
 import '../core/services/project_store.dart';
 import '../core/services/tool_bundle.dart';
 import '../core/widgets/middle_ellipsis_text.dart';
@@ -24,6 +27,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   final ProjectStore _store = ProjectStore();
+  final ApkPublishService _publishService = ApkPublishService();
   final List<ProjectConfig> _projects = <ProjectConfig>[];
   final List<String> _logs = <String>[];
 
@@ -223,7 +227,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final file = await openFile(
         confirmButtonText: '导入配置',
         acceptedTypeGroups: const <XTypeGroup>[
-          XTypeGroup(label: 'JSON', extensions: <String>['json']),
+          XTypeGroup(label: '配置文件', extensions: <String>['json', 'config']),
         ],
       );
       if (file == null) {
@@ -1051,6 +1055,17 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!lookupResult.found) {
       issues.add('基础包未匹配成功');
     }
+    for (final market in enabledMarkets) {
+      final channel = project.channels[market];
+      if (channel == null) {
+        issues.add('${market.displayName} 缺少渠道配置');
+        continue;
+      }
+      final error = MarketChannelSchemas.validateEnabledChannel(channel);
+      if (error != null) {
+        issues.add(error);
+      }
+    }
 
     final message = issues.isEmpty
         ? '上传前检查通过：基础包和 ${enabledMarkets.length} 个渠道已就绪'
@@ -1066,25 +1081,75 @@ class _DashboardPageState extends State<DashboardPage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _startAllUploads(ProjectConfig project) {
-    final message = '已触发全部开始上传，当前启用 ${project.enabledMarkets.length} 个渠道';
-    setState(() {
-      _logs.insert(0, message);
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  Future<void> _startAllUploads(ProjectConfig project) async {
+    final markets = project.enabledMarkets;
+    if (markets.isEmpty) {
+      const message = '当前项目还没有启用任何渠道，无法开始上传。';
+      setState(() {
+        _logs.insert(0, message);
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text(message)));
+      return;
+    }
+
+    await _publishProjectToMarkets(project, markets);
   }
 
-  void _startUpload(ProjectConfig project, String marketName) {
-    final message =
-        '已触发 $marketName 的开始上传，基础包规则: ${project.packageName.ifEmpty('未设置包名')} + *base.apk';
+  Future<void> _startUpload(ProjectConfig project, MarketType market) async {
+    await _publishProjectToMarkets(project, <MarketType>[market]);
+  }
+
+  Future<void> _publishProjectToMarkets(
+    ProjectConfig project,
+    List<MarketType> markets,
+  ) async {
+    final updateDraft = _updateDraftOf(project);
+    final notes = updateDraft.releaseNotes.trim();
+
     setState(() {
-      _logs.insert(0, message);
+      _logs.insert(
+        0,
+        '开始上传 ${markets.map((market) => market.displayName).join(' / ')}...',
+      );
     });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+
+    try {
+      final result = await _publishService.publishProject(
+        project: project,
+        request: PublishRequest(
+          markets: markets,
+          releaseNotesOverride: notes.isEmpty ? null : notes,
+          includeIcon: updateDraft.updateLogo,
+          includeScreenshots: updateDraft.updateScreenshots,
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+
+      final summary = result.results
+          .map(
+            (item) =>
+                '${item.market.displayName}: ${item.success ? '成功' : '失败'} - ${item.message}',
+          )
+          .toList();
+      setState(() {
+        _logs.insertAll(0, summary.reversed);
+      });
+
+      final successCount = result.results.where((item) => item.success).length;
+      final message = '上传完成：$successCount/${result.results.length} 个渠道成功';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showActionError('上传失败', error);
+    }
   }
 
   @override
@@ -1469,7 +1534,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                                 ),
                                           onUpload: () => _startUpload(
                                             selectedProject,
-                                            market.displayName,
+                                            market,
                                           ),
                                         ),
                                       ),

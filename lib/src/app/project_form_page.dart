@@ -1,4 +1,4 @@
-import 'package:file_selector/file_selector.dart';
+import 'package:file_selector/file_selector.dart' show getDirectoryPath;
 import 'package:flutter/material.dart';
 
 import '../core/models/market_channel_config.dart';
@@ -7,6 +7,7 @@ import '../core/models/project_config.dart';
 import '../core/models/publish_request.dart';
 import '../core/models/signing_config.dart';
 import '../core/services/apk_publish_service.dart';
+import '../core/services/market_channel_schema.dart';
 import '../core/services/project_store.dart';
 
 class ProjectFormResult {
@@ -65,46 +66,6 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
       });
     } catch (error) {
       _showPickerError('基础包目录', error);
-    }
-  }
-
-  Future<void> _pickOutputDirectory() async {
-    try {
-      final path = await getDirectoryPath(confirmButtonText: '选择输出目录');
-      if (path == null || !mounted) {
-        return;
-      }
-
-      setState(() {
-        _editor.outputDirectory.text = path;
-        _logs.insert(0, '已选择输出目录: $path');
-      });
-    } catch (error) {
-      _showPickerError('输出目录', error);
-    }
-  }
-
-  Future<void> _pickKeystorePath() async {
-    try {
-      final file = await openFile(
-        acceptedTypeGroups: const <XTypeGroup>[
-          XTypeGroup(
-            label: 'Keystore',
-            extensions: <String>['jks', 'keystore', 'p12'],
-          ),
-        ],
-        confirmButtonText: '选择签名文件',
-      );
-      if (file == null || !mounted) {
-        return;
-      }
-
-      setState(() {
-        _editor.keystorePath.text = file.path;
-        _logs.insert(0, '已选择签名文件: ${file.path}');
-      });
-    } catch (error) {
-      _showPickerError('签名文件', error);
     }
   }
 
@@ -213,7 +174,48 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
 
   bool _validateForm() {
     final form = _formKey.currentState;
-    return form != null && form.validate();
+    final isFormValid = form != null && form.validate();
+    if (!isFormValid) {
+      return false;
+    }
+
+    final marketError = _editor.validateEnabledMarket();
+    if (marketError == null) {
+      return true;
+    }
+
+    setState(() {
+      _logs.insert(0, marketError);
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(marketError)));
+    return false;
+  }
+
+  void _handleMarketToggle(MarketType market, bool value) {
+    final editor = _editor.marketEditors[market]!;
+    if (!value) {
+      setState(() {
+        editor.enabled.value = false;
+      });
+      return;
+    }
+
+    final error = _editor.validateMarket(market, enabledOverride: true);
+    if (error != null) {
+      setState(() {
+        _logs.insert(0, error);
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+
+    setState(() {
+      editor.enabled.value = true;
+    });
   }
 
   @override
@@ -272,7 +274,7 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '文件路径支持桌面文件选择器；保存或上传后会返回项目列表。',
+                        '参考原项目配置页，仅保留项目与渠道的必要参数；其余历史字段继续兼容但不在这里编辑。',
                         style: theme.textTheme.bodyMedium,
                       ),
                       const SizedBox(height: 24),
@@ -285,7 +287,7 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
                             child: TextFormField(
                               controller: _editor.name,
                               decoration: const InputDecoration(
-                                labelText: '项目名称',
+                                labelText: 'App 名称',
                               ),
                               validator: _requiredValidator,
                             ),
@@ -304,72 +306,10 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
                             width: 560,
                             child: _PathField(
                               controller: _editor.basePackagePath,
-                              label: '基础包地址 / 目录路径',
+                              label: 'APK 目录',
                               buttonText: '选择目录',
                               onPick: _pickApkPath,
                               validator: _requiredValidator,
-                            ),
-                          ),
-                          SizedBox(
-                            width: 560,
-                            child: _PathField(
-                              controller: _editor.outputDirectory,
-                              label: '输出目录',
-                              buttonText: '选择目录',
-                              onPick: _pickOutputDirectory,
-                              validator: _requiredValidator,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        '签名配置',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 16,
-                        runSpacing: 16,
-                        children: <Widget>[
-                          SizedBox(
-                            width: 560,
-                            child: _PathField(
-                              controller: _editor.keystorePath,
-                              label: 'Keystore 路径',
-                              buttonText: '选择签名文件',
-                              onPick: _pickKeystorePath,
-                            ),
-                          ),
-                          SizedBox(
-                            width: 220,
-                            child: TextFormField(
-                              controller: _editor.storePassword,
-                              decoration: const InputDecoration(
-                                labelText: 'Store Password',
-                              ),
-                              obscureText: true,
-                            ),
-                          ),
-                          SizedBox(
-                            width: 220,
-                            child: TextFormField(
-                              controller: _editor.keyAlias,
-                              decoration: const InputDecoration(
-                                labelText: 'Key Alias',
-                              ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 220,
-                            child: TextFormField(
-                              controller: _editor.keyPassword,
-                              decoration: const InputDecoration(
-                                labelText: 'Key Password',
-                              ),
-                              obscureText: true,
                             ),
                           ),
                         ],
@@ -389,6 +329,8 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
                           child: _MarketSection(
                             market: market,
                             editor: marketEditor,
+                            onToggle: (value) =>
+                                _handleMarketToggle(market, value),
                           ),
                         );
                       }),
@@ -514,106 +456,180 @@ class _PathField extends StatelessWidget {
   }
 }
 
-class _MarketSection extends StatelessWidget {
-  const _MarketSection({required this.market, required this.editor});
+class _MarketSection extends StatefulWidget {
+  const _MarketSection({
+    required this.market,
+    required this.editor,
+    required this.onToggle,
+  });
 
   final MarketType market;
   final _MarketEditor editor;
+  final ValueChanged<bool> onToggle;
+
+  @override
+  State<_MarketSection> createState() => _MarketSectionState();
+}
+
+class _MarketSectionState extends State<_MarketSection> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    return ExpansionTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      collapsedShape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-      ),
-      title: Text(market.displayName),
-      subtitle: ValueListenableBuilder<bool>(
-        valueListenable: editor.enabled,
-        builder: (context, enabled, child) {
-          return Text(enabled ? '已启用' : '未启用');
-        },
-      ),
-      trailing: ValueListenableBuilder<bool>(
-        valueListenable: editor.enabled,
-        builder: (context, enabled, child) {
-          return Switch(
-            value: enabled,
-            onChanged: (value) {
-              editor.enabled.value = value;
-            },
-          );
-        },
-      ),
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            children: <Widget>[
-              SizedBox(
-                width: 420,
-                child: TextFormField(
-                  controller: editor.endpoint,
-                  decoration: const InputDecoration(labelText: '上传接口地址'),
-                ),
-              ),
-              SizedBox(
-                width: 320,
-                child: TextFormField(
-                  controller: editor.token,
-                  decoration: const InputDecoration(labelText: 'Auth Token'),
-                  obscureText: true,
-                ),
-              ),
-              SizedBox(
-                width: 220,
-                child: TextFormField(
-                  controller: editor.track,
-                  decoration: const InputDecoration(labelText: '发布轨道'),
-                ),
-              ),
-              SizedBox(
-                width: 420,
-                child: TextFormField(
-                  controller: editor.releaseNotes,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: const InputDecoration(
-                    labelText: '更新说明',
-                    alignLabelWithHint: true,
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: 320,
-                child: TextFormField(
-                  controller: editor.headers,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: const InputDecoration(
-                    labelText: '请求头 (每行 key=value)',
-                    alignLabelWithHint: true,
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: 320,
-                child: TextFormField(
-                  controller: editor.fields,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: const InputDecoration(
-                    labelText: '附加字段 (每行 key=value)',
-                    alignLabelWithHint: true,
-                  ),
-                ),
-              ),
-            ],
+    final theme = Theme.of(context);
+    final schema = MarketChannelSchemas.schemaOf(widget.market);
+    final missingLabels = _missingFieldLabels(schema);
+    final isComplete = missingLabels.isEmpty;
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: widget.editor.enabled,
+      builder: (context, enabled, child) {
+        final cardColor = !isComplete
+            ? const Color(0xFFF1F3F5)
+            : enabled
+            ? const Color(0xFFEAF7EA)
+            : Colors.white;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: enabled
+                  ? const Color(0xFFB8D8B8)
+                  : _expanded
+                  ? theme.colorScheme.outline
+                  : theme.colorScheme.outlineVariant,
+              width: _expanded ? 1.6 : 1,
+            ),
+            color: cardColor,
           ),
-        ),
-      ],
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: ExpansionTile(
+              onExpansionChanged: (value) {
+                setState(() {
+                  _expanded = value;
+                });
+              },
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              collapsedShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Text(
+                widget.market.displayName,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  isComplete ? '配置完成' : '参数不全',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isComplete
+                        ? theme.colorScheme.primary
+                        : Colors.redAccent.shade100,
+                  ),
+                ),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    _expanded ? '收起' : '展开配置',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+                  const SizedBox(width: 8),
+                  Switch(
+                    value: enabled,
+                    onChanged: widget.onToggle,
+                    activeTrackColor: const Color(0xFFCFEBCF),
+                    activeThumbColor: const Color(0xFF8FBC8F),
+                    inactiveTrackColor: const Color(0xFFD7DCE0),
+                    inactiveThumbColor: Colors.white,
+                  ),
+                ],
+              ),
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: <Widget>[
+                      if (schema.summary.isNotEmpty)
+                        SizedBox(
+                          width: 960,
+                          child: Text(
+                            schema.summary,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ),
+                      ...schema.requiredFields.map(
+                        (definition) => SizedBox(
+                          width: definition.width,
+                          child: TextFormField(
+                            controller:
+                                widget.editor.requiredFields[definition.key],
+                            minLines: definition.multiline ? 3 : 1,
+                            maxLines: definition.multiline ? 5 : 1,
+                            obscureText: definition.obscureText,
+                            decoration: InputDecoration(
+                              labelText:
+                                  '${definition.label} (${definition.key})',
+                              alignLabelWithHint: definition.multiline,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  List<String> _missingFieldLabels(MarketChannelSchema schema) {
+    final missing = <String>[];
+    for (final definition in schema.requiredFields) {
+      final value =
+          widget.editor.requiredFields[definition.key]?.text.trim() ?? '';
+      if (value.isEmpty) {
+        missing.add(definition.label);
+      }
+    }
+    return missing;
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        color: Colors.white.withValues(alpha: 0.72),
+      ),
+      child: Text(label, style: theme.textTheme.labelMedium),
     );
   }
 }
@@ -643,7 +659,7 @@ class _ProjectEditor {
       keyPassword: TextEditingController(text: project.signing.keyPassword),
       marketEditors: {
         for (final channel in project.orderedChannels)
-          channel.market: _MarketEditor.fromConfig(channel),
+          channel.market: _MarketEditor.fromConfig(channel.market, channel),
       },
     );
   }
@@ -662,12 +678,16 @@ class _ProjectEditor {
     final trimmedName = name.text.trim().isEmpty
         ? 'new-project'
         : name.text.trim();
+    final resolvedBasePath = basePackagePath.text.trim();
+    final resolvedOutputDirectory = outputDirectory.text.trim().isEmpty
+        ? resolvedBasePath
+        : outputDirectory.text.trim();
     return ProjectConfig.create(name: trimmedName).copyWith(
       id: existingId ?? ProjectConfig.create(name: trimmedName).id,
       name: trimmedName,
       packageName: packageName.text.trim(),
-      basePackagePath: basePackagePath.text.trim(),
-      outputDirectory: outputDirectory.text.trim(),
+      basePackagePath: resolvedBasePath,
+      outputDirectory: resolvedOutputDirectory,
       signing: SigningConfig(
         keystorePath: keystorePath.text.trim(),
         storePassword: storePassword.text,
@@ -679,6 +699,25 @@ class _ProjectEditor {
           market: marketEditors[market]!.build(market),
       },
     );
+  }
+
+  String? validateEnabledMarket() {
+    for (final market in MarketType.values) {
+      final error = validateMarket(market);
+      if (error != null) {
+        return error;
+      }
+    }
+    return null;
+  }
+
+  String? validateMarket(MarketType market, {bool? enabledOverride}) {
+    final editor = marketEditors[market];
+    final isEnabled = enabledOverride ?? editor?.enabled.value ?? false;
+    if (editor == null || !isEnabled) {
+      return null;
+    }
+    return editor.validationError(market, enabledOverride: isEnabled);
   }
 
   void dispose() {
@@ -705,9 +744,14 @@ class _MarketEditor {
     required this.releaseNotes,
     required this.headers,
     required this.fields,
+    required this.requiredFields,
   });
 
-  factory _MarketEditor.fromConfig(MarketChannelConfig config) {
+  factory _MarketEditor.fromConfig(
+    MarketType market,
+    MarketChannelConfig config,
+  ) {
+    final schema = MarketChannelSchemas.schemaOf(market);
     return _MarketEditor(
       enabled: ValueNotifier<bool>(config.enabled),
       endpoint: TextEditingController(text: config.endpoint),
@@ -715,7 +759,18 @@ class _MarketEditor {
       track: TextEditingController(text: config.track),
       releaseNotes: TextEditingController(text: config.releaseNotes),
       headers: TextEditingController(text: _mapToLines(config.headers)),
-      fields: TextEditingController(text: _mapToLines(config.fields)),
+      fields: TextEditingController(
+        text: _mapToLines(
+          MarketChannelSchemas.stripKnownFields(market, config.fields),
+        ),
+      ),
+      requiredFields: {
+        for (final definition in schema.requiredFields)
+          definition.key: TextEditingController(
+            text:
+                MarketChannelSchemas.readField(config.fields, definition) ?? '',
+          ),
+      },
     );
   }
 
@@ -726,8 +781,16 @@ class _MarketEditor {
   final TextEditingController releaseNotes;
   final TextEditingController headers;
   final TextEditingController fields;
+  final Map<String, TextEditingController> requiredFields;
 
   MarketChannelConfig build(MarketType market) {
+    final mergedFields = _linesToMap(fields.text);
+    for (final entry in requiredFields.entries) {
+      final value = entry.value.text.trim();
+      if (value.isNotEmpty) {
+        mergedFields[entry.key] = value;
+      }
+    }
     return MarketChannelConfig(
       market: market,
       enabled: enabled.value,
@@ -736,8 +799,13 @@ class _MarketEditor {
       track: track.text.trim().isEmpty ? 'production' : track.text.trim(),
       releaseNotes: releaseNotes.text.trim(),
       headers: _linesToMap(headers.text),
-      fields: _linesToMap(fields.text),
+      fields: mergedFields,
     );
+  }
+
+  String? validationError(MarketType market, {bool? enabledOverride}) {
+    final channel = build(market).copyWith(enabled: enabledOverride);
+    return MarketChannelSchemas.validateEnabledChannel(channel);
   }
 
   void dispose() {
@@ -748,6 +816,9 @@ class _MarketEditor {
     releaseNotes.dispose();
     headers.dispose();
     fields.dispose();
+    for (final controller in requiredFields.values) {
+      controller.dispose();
+    }
   }
 
   static String _mapToLines(Map<String, String> values) {

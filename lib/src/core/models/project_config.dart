@@ -151,6 +151,10 @@ class ProjectConfig {
     if (sanitized.isEmpty) {
       return 'project-${DateTime.now().millisecondsSinceEpoch}';
     }
-    return sanitized.replaceAll(RegExp(r'^-+|-+$'), '');
+    final trimmed = sanitized.replaceAll(RegExp(r'^-+|-+$'), '');
+    if (trimmed.isEmpty) {
+      return 'project-${DateTime.now().millisecondsSinceEpoch}';
+    }
+    return trimmed;
   }
 }

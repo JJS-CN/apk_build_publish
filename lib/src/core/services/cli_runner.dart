@@ -7,6 +7,7 @@ import '../models/project_config.dart';
 import '../models/publish_request.dart';
 import '../models/signing_config.dart';
 import 'apk_publish_service.dart';
+import 'market_channel_schema.dart';
 import 'project_store.dart';
 
 Future<int> runCli(List<String> args) async {
@@ -127,11 +128,22 @@ Future<int> _projectSetMarket(ProjectStore store, _ParsedArgs parsed) async {
     releaseNotes: parsed.optionalValue('notes') ?? current.releaseNotes,
     headers: parsed.values('header').isEmpty
         ? current.headers
-        : _parseKeyValuePairs(parsed.values('header'), label: 'header'),
+        : <String, String>{
+            ...current.headers,
+            ..._parseKeyValuePairs(parsed.values('header'), label: 'header'),
+          },
     fields: parsed.values('field').isEmpty
         ? current.fields
-        : _parseKeyValuePairs(parsed.values('field'), label: 'field'),
+        : <String, String>{
+            ...current.fields,
+            ..._parseKeyValuePairs(parsed.values('field'), label: 'field'),
+          },
   );
+
+  final validationError = MarketChannelSchemas.validateEnabledChannel(next);
+  if (validationError != null) {
+    throw StateError(validationError);
+  }
 
   final updatedChannels = Map<MarketType, MarketChannelConfig>.from(
     project.channels,
@@ -236,6 +248,13 @@ Commands:
   project-set-market --project demo --market huawei [--enabled true] [--endpoint https://upload.example.com] [--token secret] [--track production] [--notes text] [--header K=V] [--field K=V]
   project-delete --project demo
   publish --project demo [--apk build/app.apk] [--markets huawei,xiaomi] [--dry-run] [--notes text]
+
+Market field keys:
+  huawei      -> appId, clientId, clientSecret
+  xiaomi      -> userName, publicPem, privateKey
+  oppo        -> clientId, clientSecret
+  vivo        -> accessKey, accessSecret, appId
+  yingyongbao -> appId, userId, secretKey
 ''');
 }
 

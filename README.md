@@ -75,6 +75,28 @@ dart run bin/apk_publish.dart publish --project demo --dry-run
 dart run bin/apk_publish.dart publish --project demo --markets huawei,xiaomi
 ```
 
+## 市场凭证字段
+
+当前版本已接入以下市场的真实上传接口，渠道配置里的 `field` 需要按市场填写：
+
+- `huawei`：`appId`、`clientId`、`clientSecret`
+- `xiaomi`：`userName`、`publicPem`、`privateKey`
+- `oppo`：`clientId`、`clientSecret`
+- `vivo`：`accessKey`、`accessSecret`、`appId`
+- `yingyongbao`：`appId`、`userId`、`secretKey`
+
+示例：
+
+```bash
+dart run bin/apk_publish.dart project-set-market \
+  --project demo \
+  --market huawei \
+  --enabled true \
+  --field appId=123456789 \
+  --field clientId=your-client-id \
+  --field clientSecret=your-client-secret
+```
+
 ## 桌面端
 
 运行桌面界面：

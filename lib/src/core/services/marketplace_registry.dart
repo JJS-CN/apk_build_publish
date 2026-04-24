@@ -1,5 +1,9 @@
 import '../models/market_type.dart';
-import 'generic_marketplace_uploader.dart';
+import 'markets/huawei_marketplace_uploader.dart';
+import 'markets/oppo_marketplace_uploader.dart';
+import 'markets/vivo_marketplace_uploader.dart';
+import 'markets/xiaomi_marketplace_uploader.dart';
+import 'markets/yingyongbao_marketplace_uploader.dart';
 import 'marketplace_uploader.dart';
 
 class MarketplaceRegistry {
@@ -10,8 +14,11 @@ class MarketplaceRegistry {
 
   factory MarketplaceRegistry.defaultRegistry() {
     return MarketplaceRegistry({
-      for (final market in MarketType.values)
-        market: GenericMarketplaceUploader(market),
+      MarketType.huawei: HuaweiMarketplaceUploader(),
+      MarketType.xiaomi: XiaomiMarketplaceUploader(),
+      MarketType.oppo: OppoMarketplaceUploader(),
+      MarketType.vivo: VivoMarketplaceUploader(),
+      MarketType.tencent: YingyongbaoMarketplaceUploader(),
     });
   }
 

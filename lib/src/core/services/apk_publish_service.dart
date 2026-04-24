@@ -6,6 +6,7 @@ import '../models/project_config.dart';
 import '../models/publish_request.dart';
 import '../models/publish_result.dart';
 import 'base_apk_matcher.dart';
+import 'market_channel_schema.dart';
 import 'marketplace_registry.dart';
 
 class ApkPublishService {
@@ -35,6 +36,21 @@ class ApkPublishService {
     for (final market in targetMarkets) {
       final channel =
           project.channels[market] ?? MarketChannelConfig(market: market);
+      final validationError = MarketChannelSchemas.validateEnabledChannel(
+        channel.copyWith(enabled: true),
+      );
+      if (validationError != null) {
+        results.add(
+          MarketPublishResult(
+            market: market,
+            success: false,
+            message: validationError,
+          ),
+        );
+        onLog?.call('[FAIL] ${market.displayName}: $validationError');
+        continue;
+      }
+
       onLog?.call('Uploading to ${market.displayName}...');
       final uploader = _registry[market];
       if (uploader == null) {

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../models/project_config.dart';
 import 'app_paths.dart';
+import 'legacy_project_config_importer.dart';
 
 class ProjectStore {
   ProjectStore({File? storageFile})
@@ -54,16 +55,20 @@ class ProjectStore {
       return <ProjectConfig>[];
     }
 
-    return decoded
-        .whereType<Map>()
-        .map(
-          (item) => ProjectConfig.fromJson(
-            item.map(
-              (dynamic key, dynamic value) => MapEntry(key.toString(), value),
-            ),
-          ),
-        )
-        .toList();
+    final projects = <ProjectConfig>[];
+    for (final item in decoded.whereType<Map>()) {
+      final normalized = item.map(
+        (dynamic key, dynamic value) => MapEntry(key.toString(), value),
+      );
+      if (normalized.containsKey('channels')) {
+        projects.add(ProjectConfig.fromJson(normalized));
+        continue;
+      }
+      if (LegacyProjectConfigImporter.looksLikeLegacyProject(normalized)) {
+        projects.add(LegacyProjectConfigImporter.fromJson(normalized));
+      }
+    }
+    return projects;
   }
 
   Future<void> saveToFile(File file, List<ProjectConfig> projects) async {
