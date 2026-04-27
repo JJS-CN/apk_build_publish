@@ -614,26 +614,6 @@ class _MarketSectionState extends State<_MarketSection> {
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-        color: Colors.white.withValues(alpha: 0.72),
-      ),
-      child: Text(label, style: theme.textTheme.labelMedium),
-    );
-  }
-}
-
 class _ProjectEditor {
   _ProjectEditor({
     required this.name,

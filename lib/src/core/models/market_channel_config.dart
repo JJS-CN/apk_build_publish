@@ -21,6 +21,15 @@ class MarketChannelConfig {
   final Map<String, String> headers;
   final Map<String, String> fields;
 
+  bool get hasConfig =>
+      enabled ||
+      endpoint.trim().isNotEmpty ||
+      authToken.trim().isNotEmpty ||
+      track.trim() != 'production' ||
+      releaseNotes.trim().isNotEmpty ||
+      headers.isNotEmpty ||
+      fields.isNotEmpty;
+
   MarketChannelConfig copyWith({
     MarketType? market,
     bool? enabled,
@@ -56,9 +65,24 @@ class MarketChannelConfig {
     };
   }
 
-  factory MarketChannelConfig.fromJson(Map<String, dynamic> json) {
+  Map<String, dynamic> toConfigJson() {
+    final json = <String, dynamic>{};
+    if (enabled) {
+      json['enabled'] = true;
+    }
+    if (fields.isNotEmpty) {
+      json['fields'] = fields;
+    }
+    return json;
+  }
+
+  factory MarketChannelConfig.fromJson(
+    Map<String, dynamic> json, {
+    MarketType? marketOverride,
+  }) {
     return MarketChannelConfig(
       market:
+          marketOverride ??
           MarketType.tryParse(json['market'] as String? ?? '') ??
           MarketType.huawei,
       enabled: json['enabled'] as bool? ?? false,

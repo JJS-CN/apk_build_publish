@@ -40,6 +40,23 @@ class SigningConfig {
     };
   }
 
+  Map<String, dynamic> toConfigJson() {
+    final json = <String, dynamic>{};
+    if (keystorePath.trim().isNotEmpty) {
+      json['keystorePath'] = keystorePath;
+    }
+    if (storePassword.isNotEmpty) {
+      json['storePassword'] = storePassword;
+    }
+    if (keyAlias.trim().isNotEmpty) {
+      json['keyAlias'] = keyAlias;
+    }
+    if (keyPassword.isNotEmpty) {
+      json['keyPassword'] = keyPassword;
+    }
+    return json;
+  }
+
   factory SigningConfig.fromJson(Map<String, dynamic>? json) {
     if (json == null) {
       return const SigningConfig();

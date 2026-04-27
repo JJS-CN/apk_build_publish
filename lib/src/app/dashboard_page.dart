@@ -227,7 +227,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final file = await openFile(
         confirmButtonText: '导入配置',
         acceptedTypeGroups: const <XTypeGroup>[
-          XTypeGroup(label: '配置文件', extensions: <String>['json', 'config']),
+          XTypeGroup(label: 'JSON', extensions: <String>['json']),
         ],
       );
       if (file == null) {

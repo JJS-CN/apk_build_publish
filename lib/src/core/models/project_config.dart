@@ -95,6 +95,40 @@ class ProjectConfig {
     };
   }
 
+  Map<String, dynamic> toConfigJson() {
+    final json = <String, dynamic>{
+      'name': name,
+      'packageName': packageName,
+      'apkDir': basePackagePath,
+    };
+
+    final trimmedOutput = outputDirectory.trim();
+    if (trimmedOutput.isNotEmpty && trimmedOutput != basePackagePath.trim()) {
+      json['outputDir'] = trimmedOutput;
+    }
+
+    if (!signing.isEmpty) {
+      json['signing'] = signing.toConfigJson();
+    }
+
+    final serializedChannels = <String, dynamic>{};
+    for (final market in MarketType.values) {
+      final channel = channels[market];
+      if (channel == null || !channel.hasConfig) {
+        continue;
+      }
+      final channelJson = channel.toConfigJson();
+      if (channelJson.isNotEmpty) {
+        serializedChannels[market.id] = channelJson;
+      }
+    }
+    if (serializedChannels.isNotEmpty) {
+      json['channels'] = serializedChannels;
+    }
+
+    return json;
+  }
+
   factory ProjectConfig.fromJson(Map<String, dynamic> json) {
     final rawChannels = json['channels'];
     final channels = <MarketType, MarketChannelConfig>{};
@@ -103,27 +137,39 @@ class ProjectConfig {
         final market = MarketType.tryParse(entry.key.toString());
         final value = entry.value;
         if (market != null && value is Map<String, dynamic>) {
-          channels[market] = MarketChannelConfig.fromJson(value);
+          channels[market] = MarketChannelConfig.fromJson(
+            value,
+            marketOverride: market,
+          );
         } else if (market != null && value is Map) {
           channels[market] = MarketChannelConfig.fromJson(
             value.map(
               (dynamic key, dynamic mapValue) =>
                   MapEntry(key.toString(), mapValue),
             ),
+            marketOverride: market,
           );
         }
       }
     }
 
+    final basePackagePath =
+        json['basePackagePath'] as String? ?? json['apkDir'] as String? ?? '';
+    final outputDirectory =
+        json['outputDirectory'] as String? ??
+        json['outputDir'] as String? ??
+        basePackagePath;
+
     return ProjectConfig(
       id:
           json['id'] as String? ??
+          json['packageName'] as String? ??
           _slugify(json['name'] as String? ?? 'project'),
       name: json['name'] as String? ?? 'Unnamed Project',
       packageName: json['packageName'] as String? ?? '',
-      basePackagePath: json['basePackagePath'] as String? ?? '',
-      outputDirectory: json['outputDirectory'] as String? ?? '',
-      signing: SigningConfig.fromJson(json['signing'] as Map<String, dynamic>?),
+      basePackagePath: basePackagePath,
+      outputDirectory: outputDirectory,
+      signing: SigningConfig.fromJson(_mapFromDynamic(json['signing'])),
       channels: mergeWithDefaults(channels),
     );
   }
@@ -156,5 +202,17 @@ class ProjectConfig {
       return 'project-${DateTime.now().millisecondsSinceEpoch}';
     }
     return trimmed;
+  }
+
+  static Map<String, dynamic>? _mapFromDynamic(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is Map) {
+      return value.map(
+        (dynamic key, dynamic mapValue) => MapEntry(key.toString(), mapValue),
+      );
+    }
+    return null;
   }
 }

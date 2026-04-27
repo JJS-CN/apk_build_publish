@@ -3,7 +3,6 @@ import 'dart:io';
 
 import '../models/project_config.dart';
 import 'app_paths.dart';
-import 'legacy_project_config_importer.dart';
 
 class ProjectStore {
   ProjectStore({File? storageFile})
@@ -60,13 +59,7 @@ class ProjectStore {
       final normalized = item.map(
         (dynamic key, dynamic value) => MapEntry(key.toString(), value),
       );
-      if (normalized.containsKey('channels')) {
-        projects.add(ProjectConfig.fromJson(normalized));
-        continue;
-      }
-      if (LegacyProjectConfigImporter.looksLikeLegacyProject(normalized)) {
-        projects.add(LegacyProjectConfigImporter.fromJson(normalized));
-      }
+      projects.add(ProjectConfig.fromJson(normalized));
     }
     return projects;
   }
@@ -75,7 +68,7 @@ class ProjectStore {
     await file.parent.create(recursive: true);
     final content = const JsonEncoder.withIndent(
       '  ',
-    ).convert(projects.map((project) => project.toJson()).toList());
+    ).convert(projects.map((project) => project.toConfigJson()).toList());
     await file.writeAsString('$content\n');
   }
 }
